@@ -107,9 +107,9 @@ class HMM(nn.Module, PyTorchModelHubMixin):
     def __init__(self, hidden_size, vocab_size, eos_token_id, sep_token_id=None):
         super().__init__()
 
-        alpha_exp = torch.softmax(torch.randn(hidden_size, hidden_size), dim=1)
-        beta = torch.log_softmax(torch.randn(hidden_size, vocab_size), dim=1)
-        gamma_exp = torch.softmax(torch.randn(1, hidden_size), dim=0)
+        alpha_exp = torch.softmax(torch.randn(hidden_size, hidden_size), dim=-1)
+        beta = torch.log_softmax(torch.randn(hidden_size, vocab_size), dim=-1)
+        gamma_exp = torch.softmax(torch.randn(1, hidden_size), dim=-1)
 
         if sep_token_id is not None:
             ################# SEP TOKEN INITIALIZATION #################
