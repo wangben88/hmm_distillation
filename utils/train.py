@@ -162,8 +162,8 @@ def train_hmm(rank, world_size,
                 if grad_update_cnt >= num_train_steps:
                     break
 
-        if rank == 0:
-            hmm_model.save_pretrained(f'{save_model_path}/checkpoint-{checkpoint + grad_update_cnt}')
+    if rank == 0:
+        hmm_model.save_pretrained(f'{save_model_path}/checkpoint-{checkpoint + grad_update_cnt}')
 
 
 if __name__ == '__main__':

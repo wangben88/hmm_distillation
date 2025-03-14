@@ -35,7 +35,8 @@ if __name__ == '__main__':
     arg_parser.add_argument('--max_new_tokens', type=int, default=128)
     arg_parser.add_argument('--save_top_k_logits', type=int, default=0)
     
-    arg_parser.add_argument('--top_p', type=float, default=1.0)
+    arg_parser.add_argument('--top_k', type=int, default=0)
+    arg_parser.add_argument('--top_p', type=float, default=1.0)    
     arg_parser.add_argument('--temperature', type=float, default=1.0)
 
     arg_parser.add_argument('--output_file',  default='', type=str)
@@ -104,8 +105,9 @@ if __name__ == '__main__':
 
             with torch.no_grad():
                 generation_config = {
-                    'do_sample': True,                    
-                    'top_p': args.top_p,
+                    'do_sample': True,  
+                    'top_k': args.top_k,                  
+                    'top_p': args.top_p,                    
                     'temperature': args.temperature,
                 }
 
