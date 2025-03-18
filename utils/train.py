@@ -210,6 +210,16 @@ if __name__ == '__main__':
         train_data, dev_data, test_data = dataset["train"], dataset["dev"], dataset["test"]
         vocab_size = 8192
         sep_token_id = 6
+    elif args.dataset_path == 'gpt2-10M':
+        vocab_size = 50257
+        eos_token_id = 50256
+        dev_data = torch.load(f'{args.dataset_path}/gpt2-large.dev', weights_only=False)
+        test_data = None
+        sep_token_id = None
+        train_data_list = []
+        for i in range(100):
+            train_data_list.append(torch.load(f'{args.dataset_path}/gpt2-large.train.{i}', weights_only=False))
+        train_data = torch.cat(train_data_list, dim=0)
     else:
         dataset = torch.load(args.dataset_path, weights_only=False)
         train_data = dataset['train']
