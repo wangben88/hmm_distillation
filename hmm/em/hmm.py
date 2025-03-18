@@ -180,3 +180,121 @@ class HMM(nn.Module, PyTorchModelHubMixin):
         y = LinearLayer.apply(self.gamma_exp, y)
 
         return y
+
+    def compute_forward_probability(self, input_ids):
+        batch_size, m = input_ids.size()
+        x_1 = input_ids[:, 0]
+        emission = self.beta[:, x_1].transpose(0, 1) 
+        gamma = torch.log(self.gamma_exp)
+        alpha_prev = gamma + emission 
+
+        for t in range(1, m):
+            temp = alpha_prev.unsqueeze(2) + torch.log(self.alpha_exp + 1e-12).unsqueeze(0)
+            alpha_prev = torch.logsumexp(temp, dim=1)
+            x_t = input_ids[:, t]
+            emission = self.beta[:, x_t].transpose(0, 1)
+            alpha_prev = alpha_prev + emission
+
+        return alpha_prev
+    
+    def generate(self, input_ids, max_length=20, temperature=1.0):
+        """
+        Generate text sequences from the HMM model using autoregressive token generation.
+
+        Args:
+            input_ids (torch.Tensor): Input token IDs of shape (1, seq_len).
+            max_length (int): Maximum number of new tokens to generate.
+            temperature (float): Sampling temperature to control diversity.
+
+        Returns:
+            List[int]: Generated token IDs.
+        """
+        device = self.alpha_exp.device
+        generated_tokens = input_ids.tolist()[0]  # Assuming batch_size=1
+
+        # Initialize α_prev using the input_ids
+        with torch.no_grad():
+            alpha_prev = self.compute_forward_probability(input_ids)  # Shape: (1, H)
+            print(alpha_prev.shape)
+
+        for _ in range(max_length):
+            # Compute logits for the next token
+            logits = self.compute_next_token_logits(alpha_prev)  # Shape: (1, V)
+            logits = logits / temperature
+
+            # Sample next token from the logits
+            probs = torch.softmax(logits, dim=-1)  # Shape: (1, V)
+            next_token = torch.multinomial(probs, num_samples=1).item()
+
+            # Append the sampled token to the generated sequence
+            generated_tokens.append(next_token)
+
+            # Break if end-of-sequence token is generated
+            if next_token == self.eos_token_id:
+                break
+
+            # Update α_prev with the newly generated token
+            next_token_tensor = torch.tensor([next_token], device=device)  # Shape: (1,)
+            alpha_prev = self.update_alpha_prev_with_token(alpha_prev, next_token_tensor)  # Shape: (1, H)
+
+        return generated_tokens
+
+
+    def compute_next_token_logits(self, alpha_prev):
+        """
+        Compute the logits for the next token (t = m+1) given the current forward probabilities α_m.
+
+        Args:
+            alpha_prev (torch.Tensor): Tensor of shape (batch_size, hidden_states) representing α_m.
+
+        Returns:
+            torch.Tensor: Tensor of shape (batch_size, vocab_size) representing logits for the next token.
+        """
+        # Compute the predictive state distribution at time m+1
+        # temp = α_prev(i) + log(a_{ij}) for all i, j
+        temp = alpha_prev.unsqueeze(2) + torch.log(self.alpha_exp + 1e-12).unsqueeze(0)  # Shape: (batch_size, H, H)
+        print(temp.shape)
+        gamma_m1 = torch.logsumexp(temp, dim=1)  # Shape: (batch_size, H)
+
+        # Compute logits = logsumexp over hidden states of [gamma_m1(j) + beta_j(x)]
+        logits = torch.logsumexp(gamma_m1.unsqueeze(2) + self.beta.unsqueeze(0), dim=1)  # Shape: (batch_size, V)
+
+        return logits  # Shape: (batch_size, vocab_size)
+
+    def update_alpha_prev_with_token(self, alpha_prev, next_token):
+        """
+        Update the forward probabilities α_prev with the newly generated token.
+
+        Args:
+            alpha_prev (torch.Tensor): Tensor of shape (batch_size, hidden_states) representing α_m.
+            next_token (torch.Tensor): Tensor of shape (batch_size,) containing the next token IDs.
+
+        Returns:
+            torch.Tensor: Updated α_{m+1} of shape (batch_size, hidden_states).
+        """
+        # Compute the predictive state distribution at time m+1
+        temp = alpha_prev.unsqueeze(2) + torch.log(self.alpha_exp + 1e-12).unsqueeze(0)  # Shape: (batch_size, H, H)
+        gamma_m1 = torch.logsumexp(temp, dim=1)  # Shape: (batch_size, H)
+
+        # Emission probabilities for the next_token
+        # self.beta: (H, V), next_token: (batch_size,)
+        emission = self.beta[:, next_token].transpose(0, 1)  # Shape: (batch_size, H)
+
+        # Update α_{m+1} = γ_{m+1} + log P(x_{m+1} | s_j)
+        alpha_new = gamma_m1 + emission  # Shape: (batch_size, H)
+
+        return alpha_new  # Shape: (batch_size, H)
+    
+
+    def loglikelihood(self, input_ids, batch_size):
+        device = self.alpha_exp.device
+        data_size, seq_len = input_ids.shape
+
+        ll = torch.tensor([0.0], device=device)
+        for batch_idx in range(0, data_size, batch_size):
+            batch_size_ = min(batch_size, data_size - batch_idx)
+            input_ids_batch = input_ids[batch_idx: batch_idx + batch_size_].to(device)
+            probs_ = self.forward(input_ids_batch)
+            ll += torch.sum(probs_[-1])
+
+        return ll
